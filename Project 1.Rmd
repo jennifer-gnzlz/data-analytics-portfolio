@@ -158,28 +158,18 @@ data_us2 <- data_us %>% mutate(annual_salary_range =
                          '200,000k+')))))))))))))))))))))
 ```
 
-cleaning industry
+1. Which industry pays the most?
 
 ```{r}
-data_us2 %>% filter(!str_detect(industry, 'early|publishing')) %>% filter(str_detect(industry, 'pharm|bio')) %>% group_by(industry) %>% summarise(count = n()) %>% arrange(desc(count))
+data_us2 %>% group_by(industry) %>% summarise(count = n(), mean_salary = mean(annual_salary), median_salary = median(annual_salary)) %>% arrange(desc(count), desc(mean_salary), desc(median_salary))
+```
+
+2. How does salary increase given years of experience?
+```{r}
+data_us2 %>% group_by(field_work_exp_yrs) %>% summarise(count = n(), average_salary = mean(annual_salary), median_salary = median(annual_salary))
 ```
 
 ```{r}
-t <-data_us2
-
-test <- t %>% mutate(industry_general = ifelse(str_detect(industry, 'early'), 'early childhood education',
-                                               ifelse(str_detect(industry, 'publishing'), 'publishing',
-                                                      ifelse(str_detect(industry, ''), '',))
-
-test <- test %>% mutate(industry = ifelse(str_detect(industry, 'early'), 'early childhood education', industry))
-```
-
-
-```{r}
-```
-
-
-```{r}
-unique(test$industry)
+write.csv(data_us2, "project1_data.csv", row.names = FALSE)
 ```
 
