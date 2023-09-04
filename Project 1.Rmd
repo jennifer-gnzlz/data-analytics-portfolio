@@ -1,0 +1,185 @@
+---
+title: "Data Analytics: Project 1"
+output: html_notebook
+---
+Guiding questions:
+
+1. Which industry pays the most?
+2. How does salary increase given years of experience?
+3. How do salaries compare for the same role in different locations?
+4. How much do salaries differ by gender and years of experience?
+5. How do factors like race and education level correlate with salary?
+6. Is there a “sweet spot” total work experience vs years in the specific field?
+
+```{r message=FALSE, warning=FALSE}
+#load packages
+library(tidyverse)
+library(dplyr)
+library(janitor)
+library(stringr)
+library(psych)
+library(eeptools)
+```
+
+```{r}
+#load data
+raw_data<-read.csv("/Users/jennifergonzalez/Downloads/Ask A Manager Salary Survey 2021 (Responses) - Form Responses 1.csv")
+```
+
+```{r}
+# explore data 
+head(raw_data)
+str(raw_data)
+colnames(raw_data)
+```
+
+```{r}
+#clean up column names
+
+raw_data_clean_names <- raw_data %>% rename("timestamp" = "Timestamp",
+                        "age" = "How.old.are.you.", 
+                        "industry" = "What.industry.do.you.work.in.", 
+                        "job_title" = "Job.title",
+                        "job_title_context" = "If.your.job.title.needs.additional.context..please.clarify.here.",
+                        "annual_salary" = "What.is.your.annual.salary...You.ll.indicate.the.currency.in.a.later.question..If.you.are.part.time.or.hourly..please.enter.an.annualized.equivalent....what.you.would.earn.if.you.worked.the.job.40.hours.a.week..52.weeks.a.year..",
+                        "additional_monetary_compensation" = "How.much.additional.monetary.compensation.do.you.get..if.any..for.example..bonuses.or.overtime.in.an.average.year...Please.only.include.monetary.compensation.here..not.the.value.of.benefits.",
+                        "currency" = "Please.indicate.the.currency",
+                        "currency_other" = "If..Other...please.indicate.the.currency.here..",
+                        "salary_context" = "If.your.income.needs.additional.context..please.provide.it.here.",
+                        "country" = "What.country.do.you.work.in.",
+                        "state" = "If.you.re.in.the.U.S...what.state.do.you.work.in.",
+                        "city" = "What.city.do.you.work.in.", 
+                        "overall_work_exp_yrs" = "How.many.years.of.professional.work.experience.do.you.have.overall.",
+                        "field_work_exp_yrs" = "How.many.years.of.professional.work.experience.do.you.have.in.your.field.",
+                        "education" = "What.is.your.highest.level.of.education.completed.",
+                        "gender" = "What.is.your.gender.",
+                        "race" = "What.is.your.race...Choose.all.that.apply..")
+```
+
+```{r}
+raw_data_clean_names_uniq <- distinct(raw_data_clean_names)
+
+data_new <- raw_data_clean_names_uniq %>% mutate(industry = str_trim(tolower(industry)),
+                             job_title = str_trim(tolower(job_title)),
+                             country = str_trim(country))
+```
+
+```{r}
+data_new %>% tabyl(currency) %>%
+  adorn_totals() %>%
+  arrange(desc(n)) %>%
+  adorn_pct_formatting(digits = 0)
+```
+
+83% of respondents earned their salaries in USD, it will be difficult to make salary comparisons without normalizing salary across different currencies, therefore I want to focus only on people working in the US, making money in USD.
+
+  - so first, I will make a subset of people earning in USD, then I will filter out everyone who is not living in the US.
+
+```{r}
+#subsetting
+data_usd <- subset(data_new, data_new$currency == "USD")
+```
+
+```{r}
+#filter out other countries
+data_usd_new <- data_usd %>% filter(str_detect(country, '^u|^U|America|States|us|US|🇺🇸|america|states|ISA|I.S|IS')) %>% filter(!str_detect(country, 'K|Virgin|Canada|Japan|k|Arab|Russia|stra|rug|UAE|Uganda|overseas|Romania|uerto|foreign|yearly'))
+```
+
+```{r}
+#we have dropped all country values that would not reasonably be assumed to mean USA.
+unique(data_usd_new$country)
+```
+
+```{r}
+#now that all rows can be assumed to be from the US, we can change this column for clarity (further filtering can be done in tableau later)
+data_usd_new$country = 'USA'
+```
+
+```{r}
+#now we can look at the state column
+unique(data_usd_new$state) #there are 132 unique state values in this column
+
+data_usd_new %>% filter(str_detect(state, ",")) %>% group_by(state) %>% summarise(counts = n()) %>% arrange(desc(counts)) 
+data_usd_new[data_usd_new$state == '',] 
+#there are 169 rows where state is missing completely. And, there are 106 rows that include more than one state in the state variable, we will go ahead and drop all of these rows for ease of comparison. 
+
+data_us <- data_usd_new %>% filter(!str_detect(state, ',')) %>% filter(!state == '')
+
+#check
+unique(data_us$state)
+```
+
+```{r}
+
+```
+
+
+```{r}
+#there are a few columns that should be numeric, lets check if they are:
+str(data_us$annual_salary)
+str(data_us$additional_monetary_compensation)
+```
+
+```{r}
+#Annual salary is a character value instead of a numeric value. We should remove the commas present in some of the numbers, then convert the column from chr to int.
+
+#removes commas
+data_us$annual_salary <- decomma(data_us$annual_salary)
+#chr to int
+data_us$annual_salary <- as.integer(data_us$annual_salary)
+#check
+str(data_us$annual_salary)
+```
+
+```{r}
+#now we sort the salaries into bins of width 10k
+
+data_us2 <- data_us %>% mutate(annual_salary_range = 
+                  ifelse(annual_salary %in% 0:9999, '0-9,999',
+                  ifelse(annual_salary %in% 10000:19999, '10,000-19,999',
+                  ifelse(annual_salary %in% 20000:19999, '20,000-29,999',
+                  ifelse(annual_salary %in% 30000:39999, '30,000-39,999',
+                  ifelse(annual_salary %in% 40000:49999, '40,000-49,999',
+                  ifelse(annual_salary %in% 50000:59999, '50,000-59,999',
+                  ifelse(annual_salary %in% 60000:69999, '60,000-69,999',
+                  ifelse(annual_salary %in% 70000:79999, '70,000-79,999',
+                  ifelse(annual_salary %in% 80000:89999, '80,000-89,999',
+                  ifelse(annual_salary %in% 90000:99999, '90,000-99,999',
+                  ifelse(annual_salary %in% 100000:109999, '100,000-109,999',
+                  ifelse(annual_salary %in% 110000:119999, '110,000-119,999',
+                  ifelse(annual_salary %in% 120000:129999, '120,000-129,999',
+                  ifelse(annual_salary %in% 130000:139999, '130,000-139,999',
+                  ifelse(annual_salary %in% 140000:149999, '140,000-149,999',
+                  ifelse(annual_salary %in% 150000:159999, '150,000-159,999',
+                  ifelse(annual_salary %in% 160000:169999, '160,000-169,999',
+                  ifelse(annual_salary %in% 170000:179999, '170,000-179,999',
+                  ifelse(annual_salary %in% 180000:189999, '180,000-189,999',
+                  ifelse(annual_salary %in% 190000:199999, '190,000-199,999',
+                         '200,000k+')))))))))))))))))))))
+```
+
+cleaning industry
+
+```{r}
+data_us2 %>% filter(!str_detect(industry, 'early|publishing')) %>% filter(str_detect(industry, 'pharm|bio')) %>% group_by(industry) %>% summarise(count = n()) %>% arrange(desc(count))
+```
+
+```{r}
+t <-data_us2
+
+test <- t %>% mutate(industry_general = ifelse(str_detect(industry, 'early'), 'early childhood education',
+                                               ifelse(str_detect(industry, 'publishing'), 'publishing',
+                                                      ifelse(str_detect(industry, ''), '',))
+
+test <- test %>% mutate(industry = ifelse(str_detect(industry, 'early'), 'early childhood education', industry))
+```
+
+
+```{r}
+```
+
+
+```{r}
+unique(test$industry)
+```
+
